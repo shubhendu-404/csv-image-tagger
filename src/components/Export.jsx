@@ -11,9 +11,12 @@ function download(content, filename) {
   URL.revokeObjectURL(url);
 }
 
-export default function Export({ products, fields, tags, tagMap, onBack }) {
+export default function Export({ products, fields, tags, tagMap, visited, onBack }) {
   const [removeTagIds, setRemoveTagIds] = useState(new Set());
   const [extraFields, setExtraFields] = useState(new Set());
+  const [visitedOnly, setVisitedOnly] = useState(false);
+
+  const activeProducts = visitedOnly ? products.filter(p => visited.has(p.id)) : products;
 
   // collect all non-image field names across all products
   const allKvFields = fields.filter(f =>
@@ -37,17 +40,17 @@ export default function Export({ products, fields, tags, tagMap, onBack }) {
       return n;
     });
 
-  // per-tag counts
+  // per-tag counts (scoped to activeProducts)
   const tagCounts = Object.fromEntries(tags.map(t => [t.id, 0]));
   let totalTagged = 0;
-  products.forEach(p => {
+  activeProducts.forEach(p => {
     Object.values(tagMap[p.id] || {}).forEach(tid => {
       if (tagCounts[tid] !== undefined) tagCounts[tid]++;
       totalTagged++;
     });
   });
 
-  const untaggedTotal = products.reduce(
+  const untaggedTotal = activeProducts.reduce(
     (s, p) => s + p.images.filter((_, i) => !(tagMap[p.id] || {})[i]).length,
     0
   );
@@ -57,7 +60,7 @@ export default function Export({ products, fields, tags, tagMap, onBack }) {
     .reduce((s, t) => s + tagCounts[t.id], 0);
 
   const exportFilteredCSV = () => {
-    const rows = products.map(p => {
+    const rows = activeProducts.map(p => {
       const pm = tagMap[p.id] || {};
       const imageCols = p.images.map(img => img.column);
       const remaining = p.images.filter((_, i) => !removeTagIds.has(pm[i]));
@@ -72,7 +75,7 @@ export default function Export({ products, fields, tags, tagMap, onBack }) {
 
   const exportURLList = () => {
     const rows = [];
-    products.forEach(p => {
+    activeProducts.forEach(p => {
       const pm = tagMap[p.id] || {};
       p.images.forEach((img, i) => {
         const tagId = pm[i];
@@ -103,7 +106,21 @@ export default function Export({ products, fields, tags, tagMap, onBack }) {
           ← Back to tagger
         </button>
 
-        <h2 className="text-2xl font-bold text-white mb-6">Export</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-white">Export</h2>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <div
+              onClick={() => setVisitedOnly(v => !v)}
+              className={`w-9 h-5 rounded-full transition-colors relative ${visitedOnly ? 'bg-blue-600' : 'bg-gray-700'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${visitedOnly ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </div>
+            <span className="text-sm text-gray-400">
+              Reviewed only
+              <span className="ml-1 text-gray-600">({visited.size}/{products.length})</span>
+            </span>
+          </label>
+        </div>
 
         {/* Summary */}
         <div className="bg-gray-900 rounded-2xl p-5 mb-5">

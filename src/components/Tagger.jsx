@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-export default function Tagger({ products, tags, tagMap, setTagMap, onExport }) {
+export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onExport }) {
   const [idx, setIdx] = useState(0);
   const [selected, setSelected] = useState(new Set());
   const [lastClicked, setLastClicked] = useState(null);
@@ -11,6 +11,8 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onExport }) 
 
   const stateRef = useRef({});
   stateRef.current = { idx, selected, lastClicked, products, tags, tagMap };
+
+  useEffect(() => { onVisit(products[idx].id); }, [idx]);
 
   const preloadRef = useRef([]);
   useEffect(() => {

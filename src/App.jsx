@@ -9,6 +9,10 @@ export default function App() {
   const [csvData, setCsvData] = useState(null);
   const [tags, setTags] = useState([]);
   const [tagMap, setTagMap] = useState({});
+  const [visited, setVisited] = useState(new Set());
+
+  const markVisited = (productId) =>
+    setVisited(prev => prev.has(productId) ? prev : new Set(prev).add(productId));
 
   return (
     <div className="h-screen bg-gray-950 text-gray-100 overflow-hidden">
@@ -17,6 +21,7 @@ export default function App() {
           onUpload={(data) => {
             setCsvData(data);
             setTagMap({});
+            setVisited(new Set());
             setScreen('setup');
           }}
         />
@@ -36,6 +41,7 @@ export default function App() {
           tags={tags}
           tagMap={tagMap}
           setTagMap={setTagMap}
+          onVisit={markVisited}
           onExport={() => setScreen('export')}
         />
       )}
@@ -45,6 +51,7 @@ export default function App() {
           fields={csvData.fields}
           tags={tags}
           tagMap={tagMap}
+          visited={visited}
           onBack={() => setScreen('tagger')}
         />
       )}
