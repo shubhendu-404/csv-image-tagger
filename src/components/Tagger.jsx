@@ -123,8 +123,34 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onExport }) 
     return () => window.removeEventListener('keydown', handler);
   }, [jumpInput]);
 
+  const singleTagMode = tags.length === 1;
+
   const handleImageClick = (imgIdx, e) => {
     e.preventDefault();
+
+    if (singleTagMode) {
+      const pid = products[idx].id;
+      if (e.shiftKey && lastClicked !== null) {
+        // range: apply single tag to all in range
+        const lo = Math.min(lastClicked, imgIdx);
+        const hi = Math.max(lastClicked, imgIdx);
+        setTagMap(prev => {
+          const m = { ...(prev[pid] || {}) };
+          for (let i = lo; i <= hi; i++) m[i] = tags[0].id;
+          return { ...prev, [pid]: m };
+        });
+      } else {
+        // toggle tag directly
+        setTagMap(prev => {
+          const m = { ...(prev[pid] || {}) };
+          m[imgIdx] === tags[0].id ? delete m[imgIdx] : (m[imgIdx] = tags[0].id);
+          return { ...prev, [pid]: m };
+        });
+      }
+      setLastClicked(imgIdx);
+      return;
+    }
+
     if (e.shiftKey && lastClicked !== null) {
       const lo = Math.min(lastClicked, imgIdx);
       const hi = Math.max(lastClicked, imgIdx);
@@ -134,7 +160,6 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onExport }) 
         return n;
       });
     } else {
-      // default: toggle
       setSelected(prev => {
         const n = new Set(prev);
         n.has(imgIdx) ? n.delete(imgIdx) : n.add(imgIdx);
@@ -314,14 +339,23 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onExport }) 
       {/* Bottom toolbar */}
       <div className="shrink-0 bg-gray-900 border-t border-gray-800 px-4 py-2.5">
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Selection status */}
-          <span className="text-sm min-w-[90px]">
-            {selected.size > 0 ? (
-              <span className="text-blue-400 font-medium">{selected.size} selected</span>
-            ) : (
-              <span className="text-gray-600">Nothing selected</span>
-            )}
-          </span>
+          {/* Mode / selection status */}
+          {singleTagMode ? (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ background: tags[0].color + '33', color: tags[0].color }}
+            >
+              Click to tag
+            </span>
+          ) : (
+            <span className="text-sm min-w-[90px]">
+              {selected.size > 0 ? (
+                <span className="text-blue-400 font-medium">{selected.size} selected</span>
+              ) : (
+                <span className="text-gray-600">Nothing selected</span>
+              )}
+            </span>
+          )}
 
           <div className="w-px h-4 bg-gray-700" />
 
@@ -361,10 +395,19 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onExport }) 
 
           {/* Hint bar */}
           <div className="flex gap-3 text-xs text-gray-500">
-            <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Click</kbd> toggle</span>
-            <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Shift+Click</kbd> range</span>
-            <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Ctrl+A</kbd> all</span>
-            <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Esc</kbd> deselect</span>
+            {singleTagMode ? (
+              <>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Click</kbd> tag/untag</span>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Shift+Click</kbd> range tag</span>
+              </>
+            ) : (
+              <>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Click</kbd> toggle</span>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Shift+Click</kbd> range</span>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Ctrl+A</kbd> all</span>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Esc</kbd> deselect</span>
+              </>
+            )}
             <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">0</kbd> clear tags</span>
             <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Space</kbd> next</span>
             <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">⌫</kbd> prev</span>

@@ -13,6 +13,22 @@ function download(content, filename) {
 
 export default function Export({ products, fields, tags, tagMap, onBack }) {
   const [removeTagIds, setRemoveTagIds] = useState(new Set());
+  const [extraFields, setExtraFields] = useState(new Set());
+
+  // collect all non-image field names across all products
+  const allKvFields = fields.filter(f =>
+    products.some(p => p.keyValues[f] !== undefined)
+  );
+
+  const toggleField = (f) =>
+    setExtraFields(prev => {
+      const n = new Set(prev);
+      n.has(f) ? n.delete(f) : n.add(f);
+      return n;
+    });
+
+  const toggleAllFields = () =>
+    setExtraFields(extraFields.size === allKvFields.length ? new Set() : new Set(allKvFields));
 
   const toggleTag = (id) =>
     setRemoveTagIds(prev => {
@@ -63,11 +79,14 @@ export default function Export({ products, fields, tags, tagMap, onBack }) {
         if (!tagId) return;
         const tag = tags.find(t => t.id === tagId);
         if (!tag) return;
+        const extra = {};
+        extraFields.forEach(f => { extra[f] = p.row[f] ?? ''; });
         rows.push({
           image_url: img.url,
           tag: tag.name,
           column: img.column,
           product_ref: p.row[fields[0]] ?? p.id,
+          ...extra,
         });
       });
     });
@@ -150,14 +169,64 @@ export default function Export({ products, fields, tags, tagMap, onBack }) {
         <div className="bg-gray-900 rounded-2xl p-5">
           <p className="text-white font-medium mb-1">Tagged Image URL List</p>
           <p className="text-gray-600 text-xs mb-4">
-            All tagged image URLs with tag name, column, and product ref. Good for bulk scripts.
+            All tagged image URLs with tag name, column, and product ref. Optionally include extra product fields.
           </p>
+
+          {/* Always-generated fields */}
+          <div className="mb-3">
+            <p className="text-gray-600 text-xs mb-1.5">Always generated</p>
+            <div className="flex flex-wrap gap-1.5">
+              {['image_url', 'tag', 'column', 'product_ref'].map(f => (
+                <span key={f} className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full font-mono">
+                  {f}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Extra field selector */}
+          {allKvFields.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-gray-400 text-xs">From your CSV</p>
+                <button
+                  onClick={toggleAllFields}
+                  className="text-xs text-blue-500 hover:text-blue-400 transition-colors"
+                >
+                  {extraFields.size === allKvFields.length ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div className="max-h-48 overflow-y-auto grid grid-cols-2 gap-1">
+                {allKvFields.map(f => (
+                  <label key={f} className="flex items-center gap-2 cursor-pointer group py-0.5">
+                    <div
+                      className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                        extraFields.has(f)
+                          ? 'bg-blue-600 border-blue-600'
+                          : 'border-gray-700 group-hover:border-gray-500'
+                      }`}
+                      onClick={() => toggleField(f)}
+                    >
+                      {extraFields.has(f) && (
+                        <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-gray-400 text-xs truncate font-mono">{f}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <button
             onClick={exportURLList}
             disabled={totalTagged === 0}
             className="w-full bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
           >
-            Download tagged_images.csv ({totalTagged} images)
+            Download tagged_images.csv ({totalTagged} images
+            {extraFields.size > 0 ? ` · +${extraFields.size} fields` : ''})
           </button>
         </div>
       </div>
