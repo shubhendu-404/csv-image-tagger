@@ -1,9 +1,14 @@
 import Papa from 'papaparse';
 
-const IMAGE_URL_RE = /^https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp|avif|svg)(\?\S*)?$/i;
-
-export const isImageUrl = (val) =>
-  typeof val === 'string' && IMAGE_URL_RE.test(val.trim());
+export const isImageUrl = (val) => {
+  if (typeof val !== 'string') return false;
+  try {
+    const url = new URL(val.trim());
+    return /\.(?:jpg|jpeg|png|gif|webp|avif|svg)$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+};
 
 export function parseCSV(file) {
   return new Promise((resolve, reject) => {
