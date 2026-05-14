@@ -3,7 +3,6 @@ import ScrollView from './ScrollView';
 
 export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onExport }) {
   const [idx, setIdx] = useState(0);
-  const [selected, setSelected] = useState(new Set());
   const [lastClicked, setLastClicked] = useState(null);
   const [showAllKv, setShowAllKv] = useState(false);
   const [jumpInput, setJumpInput] = useState(false);
@@ -13,7 +12,7 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
   const jumpRef = useRef();
 
   const stateRef = useRef({});
-  stateRef.current = { idx, selected, lastClicked, products, tags, tagMap, scrollMode, activeTagId };
+  stateRef.current = { idx, lastClicked, products, tags, tagMap, scrollMode, activeTagId };
 
   useEffect(() => { onVisit(products[idx].id); }, [idx]);
 
@@ -36,39 +35,15 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
   const taggedCount = Object.keys(productTagMap).length;
   const totalTagged = Object.values(tagMap).reduce((s, m) => s + Object.keys(m).length, 0);
 
-  const applyTagById = (tagId) => {
-    const { selected, products, idx } = stateRef.current;
-    if (selected.size === 0) return;
-    const pid = products[idx].id;
-    setTagMap(prev => {
-      const m = { ...(prev[pid] || {}) };
-      selected.forEach(i => { m[i] = tagId; });
-      return { ...prev, [pid]: m };
-    });
-    setSelected(new Set());
-    setLastClicked(null);
-  };
-
-  const clearSelected = () => {
-    const { selected, products, idx } = stateRef.current;
-    const pid = products[idx].id;
-    setTagMap(prev => {
-      const m = { ...(prev[pid] || {}) };
-      if (selected.size === 0) {
-        // clear all tags for this product
-        return { ...prev, [pid]: {} };
-      }
-      selected.forEach(i => { delete m[i]; });
-      return { ...prev, [pid]: m };
-    });
-    setSelected(new Set());
+  const clearProductTags = () => {
+    const pid = products[stateRef.current.idx].id;
+    setTagMap(prev => ({ ...prev, [pid]: {} }));
   };
 
   const goNext = () => {
     const { idx, products } = stateRef.current;
     if (idx < products.length - 1) {
       setIdx(i => i + 1);
-      setSelected(new Set());
       setLastClicked(null);
       setShowAllKv(false);
     }
@@ -78,7 +53,6 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
     const { idx } = stateRef.current;
     if (idx > 0) {
       setIdx(i => i - 1);
-      setSelected(new Set());
       setLastClicked(null);
       setShowAllKv(false);
     }
@@ -86,29 +60,26 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
 
   useEffect(() => {
     const handler = (e) => {
-      if (jumpInput || scrollMode) return;
+      if (jumpInput) return;
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
 
-      const { tags, selected, products } = stateRef.current;
+      const { tags, scrollMode } = stateRef.current;
       const key = e.key;
 
       if (key >= '1' && key <= '9') {
         const t = tags[parseInt(key) - 1];
-        if (t) applyTagById(t.id);
+        if (t) setActiveTagId(t.id);
         return;
       }
+
+      if (scrollMode) return;
+
       if (key === '0' || key === 'Delete') {
-        clearSelected();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'a') {
-        e.preventDefault();
-        setSelected(new Set(products[stateRef.current.idx].images.map((_, i) => i)));
+        clearProductTags();
         return;
       }
       if (key === 'Escape') {
-        setSelected(new Set());
         setLastClicked(null);
         return;
       }
@@ -117,9 +88,14 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
         goNext();
         return;
       }
-      if (key === 'Backspace') {
+      if (key === 'Backspace' || key === 'ArrowLeft') {
         e.preventDefault();
         goPrev();
+        return;
+      }
+      if (key === 'ArrowRight') {
+        e.preventDefault();
+        goNext();
         return;
       }
     };
@@ -128,47 +104,25 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
     return () => window.removeEventListener('keydown', handler);
   }, [jumpInput, scrollMode]);
 
-  const singleTagMode = tags.length === 1;
-
   const handleImageClick = (imgIdx, e) => {
     e.preventDefault();
-
-    if (singleTagMode) {
-      const pid = products[idx].id;
-      if (e.shiftKey && lastClicked !== null) {
-        // range: apply single tag to all in range
-        const lo = Math.min(lastClicked, imgIdx);
-        const hi = Math.max(lastClicked, imgIdx);
-        setTagMap(prev => {
-          const m = { ...(prev[pid] || {}) };
-          for (let i = lo; i <= hi; i++) m[i] = tags[0].id;
-          return { ...prev, [pid]: m };
-        });
-      } else {
-        // toggle tag directly
-        setTagMap(prev => {
-          const m = { ...(prev[pid] || {}) };
-          m[imgIdx] === tags[0].id ? delete m[imgIdx] : (m[imgIdx] = tags[0].id);
-          return { ...prev, [pid]: m };
-        });
-      }
-      setLastClicked(imgIdx);
-      return;
-    }
+    const { activeTagId, lastClicked } = stateRef.current;
+    if (!activeTagId) return;
+    const pid = products[idx].id;
 
     if (e.shiftKey && lastClicked !== null) {
       const lo = Math.min(lastClicked, imgIdx);
       const hi = Math.max(lastClicked, imgIdx);
-      setSelected(prev => {
-        const n = new Set(prev);
-        for (let i = lo; i <= hi; i++) n.add(i);
-        return n;
+      setTagMap(prev => {
+        const m = { ...(prev[pid] || {}) };
+        for (let i = lo; i <= hi; i++) m[i] = activeTagId;
+        return { ...prev, [pid]: m };
       });
     } else {
-      setSelected(prev => {
-        const n = new Set(prev);
-        n.has(imgIdx) ? n.delete(imgIdx) : n.add(imgIdx);
-        return n;
+      setTagMap(prev => {
+        const m = { ...(prev[pid] || {}) };
+        m[imgIdx] === activeTagId ? delete m[imgIdx] : (m[imgIdx] = activeTagId);
+        return { ...prev, [pid]: m };
       });
     }
     setLastClicked(imgIdx);
@@ -178,7 +132,6 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
     const n = parseInt(jumpVal);
     if (!isNaN(n) && n >= 1 && n <= products.length) {
       setIdx(n - 1);
-      setSelected(new Set());
       setLastClicked(null);
       setShowAllKv(false);
     }
@@ -286,11 +239,7 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
           onImageTag={(productId, imgIdx) => {
             setTagMap(prev => {
               const m = { ...(prev[productId] || {}) };
-              if (m[imgIdx] === activeTagId) {
-                delete m[imgIdx];
-              } else {
-                m[imgIdx] = activeTagId;
-              }
+              m[imgIdx] === activeTagId ? delete m[imgIdx] : (m[imgIdx] = activeTagId);
               return { ...prev, [productId]: m };
             });
           }}
@@ -309,19 +258,17 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}
             >
               {product.images.map((img, imgIdx) => {
-                const isSel = selected.has(imgIdx);
                 const tagId = productTagMap[imgIdx];
                 const tag = tags.find(t => t.id === tagId);
+                const isActiveTag = tagId === activeTagId;
                 return (
                   <div
                     key={`${idx}-${imgIdx}`}
                     onClick={(e) => handleImageClick(imgIdx, e)}
                     className="relative cursor-pointer rounded-xl overflow-hidden aspect-square select-none"
                     style={{
-                      boxShadow: isSel
-                        ? '0 0 0 3px #3b82f6, 0 0 0 5px rgba(59,130,246,0.3)'
-                        : tag
-                        ? `0 0 0 3px ${tag.color}`
+                      boxShadow: tag
+                        ? `0 0 0 3px ${tag.color}${isActiveTag ? '' : '99'}`
                         : '0 0 0 1px rgba(255,255,255,0.06)',
                     }}
                   >
@@ -343,7 +290,6 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
                       <span>Failed to load</span>
                     </div>
 
-                    {/* Tag label */}
                     {tag && (
                       <div
                         className="absolute bottom-0 left-0 right-0 py-1 px-2 text-xs font-semibold text-white text-center"
@@ -353,20 +299,6 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
                       </div>
                     )}
 
-                    {/* Selection checkmark */}
-                    {isSel && (
-                      <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
-                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    )}
-
-                    {/* Image index */}
                     <div className="absolute top-1.5 left-1.5 bg-black/50 text-gray-400 text-xs px-1.5 py-0.5 rounded-md font-mono">
                       {imgIdx + 1}
                     </div>
@@ -378,109 +310,51 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
         </div>
       )}
 
-      {/* Bottom toolbar */}
-      {scrollMode ? (
-        <div className="shrink-0 bg-gray-900 border-t border-gray-800 px-4 py-2.5">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-500">Active tag:</span>
-            {tags.map(tag => (
-              <button
-                key={tag.id}
-                onClick={() => setActiveTagId(tag.id)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white transition-all"
-                style={{
-                  background: tag.color,
-                  opacity: activeTagId === tag.id ? 1 : 0.4,
-                  boxShadow: activeTagId === tag.id ? '0 0 0 2px white' : 'none',
-                }}
-                title={`Key ${tag.key}`}
-              >
-                <span className="font-mono font-bold opacity-75">[{tag.key}]</span>
-                {tag.name}
-              </button>
-            ))}
-            <span className="text-xs text-gray-600 ml-auto">Click image to tag/untag</span>
-          </div>
-        </div>
-      ) : (
-        <div className="shrink-0 bg-gray-900 border-t border-gray-800 px-4 py-2.5">
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Mode / selection status */}
-            {singleTagMode ? (
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ background: tags[0].color + '33', color: tags[0].color }}
-              >
-                Click to tag
+      {/* Bottom toolbar — unified active-tag pattern for both modes */}
+      <div className="shrink-0 bg-gray-900 border-t border-gray-800 px-4 py-2.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-gray-500">Active tag:</span>
+          {tags.map(tag => (
+            <button
+              key={tag.id}
+              onClick={() => setActiveTagId(tag.id)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white transition-all"
+              style={{
+                background: tag.color,
+                opacity: activeTagId === tag.id ? 1 : 0.4,
+                boxShadow: activeTagId === tag.id ? '0 0 0 2px white' : 'none',
+              }}
+              title={`Key ${tag.key}`}
+            >
+              <span className="font-mono font-bold opacity-75">[{tag.key}]</span>
+              {tag.name}
+            </button>
+          ))}
+
+          <div className="w-px h-4 bg-gray-700" />
+
+          {!scrollMode && (
+            <>
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                {taggedCount}/{product.images.length} tagged
               </span>
-            ) : (
-              <span className="text-sm min-w-[90px]">
-                {selected.size > 0 ? (
-                  <span className="text-blue-400 font-medium">{selected.size} selected</span>
-                ) : (
-                  <span className="text-gray-600">Nothing selected</span>
-                )}
-              </span>
+              <div className="w-px h-4 bg-gray-700" />
+            </>
+          )}
+
+          <div className="flex gap-3 text-xs text-gray-500 ml-auto">
+            <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Click</kbd> tag/untag</span>
+            <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Shift+Click</kbd> range</span>
+            {!scrollMode && (
+              <>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">0</kbd> clear</span>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Space</kbd> / <kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">→</kbd> next</span>
+                <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">⌫</kbd> / <kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">←</kbd> prev</span>
+              </>
             )}
-
-            <div className="w-px h-4 bg-gray-700" />
-
-            {/* Tag buttons */}
-            <div className="flex gap-1.5 flex-wrap flex-1">
-              {tags.map(tag => (
-                <button
-                  key={tag.id}
-                  onClick={() => applyTagById(tag.id)}
-                  disabled={selected.size === 0}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-40 transition-opacity"
-                  style={{ background: tag.color }}
-                  title={`Key ${tag.key}`}
-                >
-                  <span className="font-mono font-bold opacity-75">[{tag.key}]</span>
-                  {tag.name}
-                </button>
-              ))}
-              {selected.size > 0 && (
-                <button
-                  onClick={clearSelected}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-                >
-                  <span className="font-mono opacity-75">[0]</span> Clear
-                </button>
-              )}
-            </div>
-
-            <div className="w-px h-4 bg-gray-700" />
-
-            {/* Status */}
-            <span className="text-xs text-gray-400 whitespace-nowrap">
-              {taggedCount}/{product.images.length} tagged
-            </span>
-
-            <div className="w-px h-4 bg-gray-700" />
-
-            {/* Hint bar */}
-            <div className="flex gap-3 text-xs text-gray-500">
-              {singleTagMode ? (
-                <>
-                  <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Click</kbd> tag/untag</span>
-                  <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Shift+Click</kbd> range tag</span>
-                </>
-              ) : (
-                <>
-                  <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Click</kbd> toggle</span>
-                  <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Shift+Click</kbd> range</span>
-                  <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Ctrl+A</kbd> all</span>
-                  <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Esc</kbd> deselect</span>
-                </>
-              )}
-              <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">0</kbd> clear tags</span>
-              <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">Space</kbd> next</span>
-              <span><kbd className="bg-gray-700 text-gray-200 px-1 py-0.5 rounded">⌫</kbd> prev</span>
-            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
