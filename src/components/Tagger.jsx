@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import ScrollView from './ScrollView';
+import FilterModal from './FilterModal';
 
 export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onExport }) {
   const [idx, setIdx] = useState(0);
@@ -9,18 +10,56 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
   const [jumpVal, setJumpVal] = useState('');
   const [scrollMode, setScrollMode] = useState(false);
   const [activeTagId, setActiveTagId] = useState(() => tags[0]?.id ?? null);
+  const [showFilter, setShowFilter] = useState(false);
+  const [filters, setFilters] = useState({});
   const jumpRef = useRef();
 
-  const stateRef = useRef({});
-  stateRef.current = { idx, lastClicked, products, tags, tagMap, scrollMode, activeTagId };
+  const columnUniqueValues = useMemo(() => {
+    const map = {};
+    products.forEach(p => {
+      Object.entries(p.keyValues).forEach(([col, val]) => {
+        if (!map[col]) map[col] = new Set();
+        if (val) map[col].add(val);
+      });
+    });
+    return Object.fromEntries(
+      Object.entries(map).map(([col, set]) => [
+        col,
+        [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      ])
+    );
+  }, [products]);
 
-  useEffect(() => { onVisit(products[idx].id); }, [idx]);
+  const filteredProducts = useMemo(() => {
+    const active = Object.entries(filters).filter(([, v]) => v !== null && v !== undefined);
+    if (active.length === 0) return products;
+    return products.filter(p =>
+      active.every(([col, vals]) => vals.has(p.keyValues[col] ?? ''))
+    );
+  }, [products, filters]);
+
+  // Reset idx when filter shrinks the list
+  useEffect(() => {
+    if (idx >= filteredProducts.length && filteredProducts.length > 0) {
+      setIdx(0);
+      setLastClicked(null);
+    }
+  }, [filteredProducts.length]);
+
+  const filterActive = Object.keys(filters).length > 0;
+
+  const stateRef = useRef({});
+  stateRef.current = { idx, lastClicked, products: filteredProducts, tags, tagMap, scrollMode, activeTagId };
+
+  useEffect(() => {
+    if (filteredProducts[idx]) onVisit(filteredProducts[idx].id);
+  }, [idx, filteredProducts]);
 
   const preloadRef = useRef([]);
   useEffect(() => {
     preloadRef.current = [];
     for (let offset = 1; offset <= 2; offset++) {
-      const next = products[idx + offset];
+      const next = filteredProducts[idx + offset];
       if (!next) break;
       next.images.forEach(img => {
         const el = new Image();
@@ -28,15 +67,17 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
         preloadRef.current.push(el);
       });
     }
-  }, [idx, products]);
+  }, [idx, filteredProducts]);
 
-  const product = products[idx];
+  const product = filteredProducts[idx];
+  if (!product) return null;
   const productTagMap = tagMap[product.id] || {};
   const taggedCount = Object.keys(productTagMap).length;
   const totalTagged = Object.values(tagMap).reduce((s, m) => s + Object.keys(m).length, 0);
+  const filteredTotal = filteredProducts.length;
 
   const clearProductTags = () => {
-    const pid = products[stateRef.current.idx].id;
+    const pid = stateRef.current.products[stateRef.current.idx].id;
     setTagMap(prev => ({ ...prev, [pid]: {} }));
   };
 
@@ -108,7 +149,7 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
     e.preventDefault();
     const { activeTagId, lastClicked } = stateRef.current;
     if (!activeTagId) return;
-    const pid = products[idx].id;
+    const pid = filteredProducts[idx].id;
 
     if (e.shiftKey && lastClicked !== null) {
       const lo = Math.min(lastClicked, imgIdx);
@@ -130,7 +171,7 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
 
   const submitJump = () => {
     const n = parseInt(jumpVal);
-    if (!isNaN(n) && n >= 1 && n <= products.length) {
+    if (!isNaN(n) && n >= 1 && n <= filteredTotal) {
       setIdx(n - 1);
       setLastClicked(null);
       setShowAllKv(false);
@@ -159,11 +200,11 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
               }}
               onBlur={submitJump}
               min={1}
-              max={products.length}
+              max={filteredTotal}
               autoFocus
               className="w-20 bg-gray-800 border border-blue-600 rounded px-2 py-0.5 text-white text-sm focus:outline-none"
             />
-            <span className="text-gray-500 text-sm">/ {products.length}</span>
+            <span className="text-gray-500 text-sm">/ {filteredTotal}</span>
           </div>
         ) : (
           <button
@@ -171,16 +212,37 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
             className="text-gray-400 text-sm font-mono hover:text-white transition-colors"
             title="Click to jump to product"
           >
-            {idx + 1} / {products.length}
+            {idx + 1} / {filteredTotal}
+            {filterActive && (
+              <span className="ml-1 text-blue-400 text-xs">of {products.length}</span>
+            )}
           </button>
         )}
 
         <div className="flex-1 h-1 bg-gray-800 rounded-full">
           <div
             className="h-1 bg-blue-500 rounded-full transition-all duration-200"
-            style={{ width: `${((idx + 1) / products.length) * 100}%` }}
+            style={{ width: `${filteredTotal > 0 ? ((idx + 1) / filteredTotal) * 100 : 0}%` }}
           />
         </div>
+
+        <button
+          onClick={() => setShowFilter(true)}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+            filterActive
+              ? 'bg-blue-600 hover:bg-blue-500 text-white'
+              : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+          }`}
+          title="Filter products"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          Filter
+          {filterActive && (
+            <span className="bg-white/20 rounded px-1 text-[10px]">{Object.keys(filters).length}</span>
+          )}
+        </button>
 
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <span className="text-xs text-gray-500">Scroll</span>
@@ -227,7 +289,7 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
       {/* Image area — scroll or card mode */}
       {scrollMode ? (
         <ScrollView
-          products={products}
+          products={filteredProducts}
           tags={tags}
           tagMap={tagMap}
           activeTagId={activeTagId}
@@ -308,6 +370,21 @@ export default function Tagger({ products, tags, tagMap, setTagMap, onVisit, onE
             </div>
           )}
         </div>
+      )}
+
+      {showFilter && (
+        <FilterModal
+          columnUniqueValues={columnUniqueValues}
+          products={products}
+          filters={filters}
+          onApply={(applied) => {
+            setFilters(applied);
+            setIdx(0);
+            setLastClicked(null);
+            setShowFilter(false);
+          }}
+          onClose={() => setShowFilter(false)}
+        />
       )}
 
       {/* Bottom toolbar — unified active-tag pattern for both modes */}
