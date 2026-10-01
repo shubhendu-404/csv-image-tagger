@@ -1,7 +1,7 @@
 import { memo } from 'react';
 
 const ScrollProductRow = memo(function ScrollProductRow({ product, productIdx, tags, productTagMap, activeTagId, onImageTag }) {
-  const title = product.keyValues?.Title || product.keyValues?.title || `Product ${productIdx + 1}`;
+  const kvEntries = Object.entries(product.keyValues);
   const taggedCount = Object.keys(productTagMap).length;
 
   return (
@@ -11,7 +11,14 @@ const ScrollProductRow = memo(function ScrollProductRow({ product, productIdx, t
     >
       <div className="flex items-baseline gap-3 mb-2">
         <span className="text-xs font-mono text-gray-600">{productIdx + 1}</span>
-        <span className="text-sm text-gray-300 font-medium truncate flex-1">{title}</span>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 flex-1 min-w-0">
+          {kvEntries.map(([k, v]) => (
+            <span key={k} className="text-xs">
+              <span className="text-gray-600">{k}:</span>{' '}
+              <span className="text-gray-300">{v.length > 60 ? v.slice(0, 60) + '…' : v}</span>
+            </span>
+          ))}
+        </div>
         <span className="text-xs text-gray-600 shrink-0">
           {taggedCount}/{product.images.length} tagged
         </span>
